@@ -1,98 +1,125 @@
+# %%
 # imports
+import datetime
+from turtle import mode
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
+# %%
+TEST_SIZE = 0.2
+RANDOM_SEED = 42
+# %%
+# read csv
+df = pd.read_csv('data/treino.csv', sep='|')
 
+df.info()
+# %%
+# information about data
+df.select_dtypes(include="object").describe()
+# %%
+# drop collums don't usefull
+df_train = df.drop(['ssn', 'cc_num', 'first', 'last', 'street', 'zip', 'lat', 'long', 'city_pop', 'acct_num', 'trans_num', 'merchant', 'merch_lat', 'merch_long', 'is_fraud'], axis=1)
+df_train.info()
+# %%
+# function to separate data datetime
+def cleaning_data_datetime(data):
+    # transform to datetime
+    time_transaction = pd.to_datetime(data['trans_time'],format='%H:%M:%S')
+    date_transaction = pd.to_datetime(data['trans_date'], format='%Y-%m-%d')
 
-def treat_train_data(df):
-  df.dropna(subset=['is_fraud'],inplace=True)
-  X = df.drop(['is_fraud', 'ssn', 'first', 'last','cc_num', 'street', 'acct_num', 'profile', 'trans_num'], axis=1)
-  # Substituindo os valores nulos por 0
-  X['zip'] = X['zip'].fillna(0)
-  X['lat'] = X['lat'].fillna(0)
-  X['long'] = X['long'].fillna(0)
-  X['merch_lat'] = X['merch_lat'].fillna(0)
-  X['merch_long'] = X['merch_long'].fillna(0)
+    # apply collumns
+    data['hour'] = time_transaction.dt.hour
+    data['minute'] = time_transaction.dt.minute
+    data['seconds'] = time_transaction.dt.second
+    data['year'] = date_transaction.dt.year
+    data['month'] = date_transaction.dt.month
+    data['day'] = date_transaction.dt.day
+    data.drop(['trans_time', 'trans_date'], axis=1, inplace=True)
 
-  X['hora'] =pd.to_datetime(X['trans_time'],format='%H:%M:%S').dt.hour
-  X['minuto'] =pd.to_datetime(X['trans_time'],format='%H:%M:%S').dt.minute
-  X['segundo'] =pd.to_datetime(X['trans_time'],format='%H:%M:%S').dt.second
-  X['ano'] =pd.to_datetime(X['trans_date'], format='%Y-%m-%d').dt.year
-  X['mês'] =pd.to_datetime(X['trans_date'], format='%Y-%m-%d').dt.month
-  X['dia'] =pd.to_datetime(X['trans_date'], format='%Y-%m-%d').dt.day
+# %%
+cleaning_data_datetime(df_train)
+# %%
+# function to get age of user
+def get_user_age(data):
+    year_user = pd.to_datetime(data['dob'], format="%Y-%m-%d")
+    data['age'] = (data['year'] - year_user.dt.year)
+    data.drop(['dob'], axis=1, inplace=True)
+# %%
+get_user_age(df_train)
+# %%
+df_train.info()
 
-  X = X.drop(['trans_time','trans_date'],axis=1)
+# %%
+# transform category columns
+from sklearn.preprocessing import OneHotEncoder
 
-  # Tratando os dados categoricos
-  categorys_columns = ['gender', 'city', 'state', 'job', 'dob', 'category', 'merchant']
-  X_encoded = encoder.fit_transform(X[categorys_columns])
-  y = df['is_fraud']
-  return (X_encoded, y)
+categorical_data = ['gender', 'city', 'state', 'job', 'profile', 'category']
+encoder = OneHotEncoder()
 
-def treat_test_data(df_sub):
-  X = df_sub.drop(['first','last','ssn','cc_num','profile','trans_num','street','acct_num'],axis=1)
-  X['zip'] = X['zip'].fillna(0)
-  X['lat'] = X['lat'].fillna(0)
-  X['long'] = X['long'].fillna(0)
-  X['merch_lat'] = X['lat'].fillna(0)
-  X['merch_long'] = X['long'].fillna(0)
-  X['hora'] =pd.to_datetime(X['trans_time'],format='%H:%M:%S').dt.hour
-  X['minuto'] =pd.to_datetime(X['trans_time'],format='%H:%M:%S').dt.minute
-  X['segundo'] =pd.to_datetime(X['trans_time'],format='%H:%M:%S').dt.second
-  X['ano'] =pd.to_datetime(X['trans_date'], format='%Y-%m-%d').dt.year
-  X['mês'] =pd.to_datetime(X['trans_date'], format='%Y-%m-%d').dt.month
-  X['dia'] =pd.to_datetime(X['trans_date'], format='%Y-%m-%d').dt.day
-  X = X.drop(['trans_time','trans_date'],axis=1)
-  categorys_columns = ['gender', 'city', 'state', 'job', 'dob', 'category', 'merchant']
-  X_encoded = encoder.transform(X[categorys_columns])
-  return X_encoded
+one_hot = encoder.fit_transform(df_train[categorical_data])
 
-def response(df, model): 
-  X = treat_test_data(df)
-  y = model.predict(X)
-  response = pd.DataFrame()
-  response['trans_num'] = df['trans_num']
-  response['is_fraud'] = y
-  response.to_csv('submissão.csv', index=False)
+encoded_df = pd.DataFrame(one_hot.toarray(), columns=encoder.get_feature_names_out(categorical_data))
 
-df_train = pd.read_csv('data/treino.csv', sep='|')
-df_test = pd.read_csv('data/teste.csv', sep='|')
+df_encoded = pd.concat([df_train.drop(columns=categorical_data), encoded_df], axis=1)
 
-# Removendo colunas inutilizadas
-X_encoded, y = treat_train_data(df_train, False)
-# Separando os dados de treino e teste
-X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
-# Escalando os Dados
-scaler = StandardScaler(with_mean=False)
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.fit_transform(X_test)
+# %%
+# split data in train and test
+from sklearn.model_selection import train_test_split
+y = df['is_fraud']
+X_train, X_test, y_train, y_test = train_test_split(df_encoded, y, test_size=TEST_SIZE, random_state=RANDOM_SEED)
 
-# Treinando o modelo
-model = RandomForestClassifier(random_state=42)
+y_train.fillna(y_train.mean(), inplace=True)
+y_test.fillna(y_train.mean(), inplace=True)
+# %%
+# cleaning null values
+from sklearn.impute import SimpleImputer
+imputer = SimpleImputer()
+X_train = imputer.fit_transform(X_train)
+# %%
+# training model
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+lab = LabelEncoder()
+y_train_transformed = lab.fit_transform(y_train)
+model = RandomForestClassifier()
+model.fit(X_train, y_train_transformed)
+# %%
+# predict values
+X_test_transform = imputer.transform(X_test)
+y_test = lab.transform(y_test)
+pred = model.predict(X_test_transform)
+# %%
+accuracy_score(y_test, pred)
 
-model.fit(X_train_scaled, y_train)
+# %%
+# respost 
 
-predictions = model.predict(X_test_scaled)
-accuracy = model.score(X_test_scaled, y_test)
-print(accuracy)
+df = pd.read_csv('data/teste.csv', sep='|')
+df_train = df.drop(['ssn', 'cc_num', 'first', 'last', 'street', 'zip', 'lat', 'long', 'city_pop', 'acct_num', 'trans_num', 'merchant', 'merch_lat', 'merch_long'], axis=1)
+df_train.info()
+cleaning_data_datetime(df_train)
+get_user_age(df_train)
 
-from sklearn.model_selection import GridSearchCV
+one_hot = encoder.transform(df_train[categorical_data])
+encoded_df = pd.DataFrame(one_hot.toarray(), columns=encoder.get_feature_names_out(categorical_data))
+df_encoded = pd.concat([df_train.drop(columns=categorical_data), encoded_df], axis=1)
 
-forest = RandomForestClassifier()
-
-param_grid = {
-  "n_estimators": [3,10,30],
-  "max_feature": [2,4,6,8]
-}
-
-grid_search = GridSearchCV(model, param_grid=param_grid, cv=5, scoring="neg_mean_squared_error", return_train_score=True)
-
-grid_search.fit(X_train_scaled, y_train)
-#response(df_test, model=model)
+X_train = imputer.transform(df_encoded)
+#%%
+y_sub = model.predict(X_train)
+#%%
+resposta = pd.DataFrame()
+resposta['trans_num'] =  df['trans_num']
+resposta['is_fraud'] = y_sub
+resposta['is_fraud'].value_counts()
+# %%
+resposta.to_csv('data/submissao.csv', index=False)
+# %%
