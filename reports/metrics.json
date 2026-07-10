@@ -1,0 +1,78 @@
+{
+  "baseline": {
+    "KNN": {
+      "accuracy": 0.9913311834668331,
+      "precision_fraud": 0.6728395061728395,
+      "recall_fraud": 0.3562091503267974,
+      "f1_fraud": 0.4658119658119658,
+      "roc_auc": 0.840556937970459,
+      "confusion_matrix": [
+        [
+          28480,
+          53
+        ],
+        [
+          197,
+          109
+        ]
+      ]
+    },
+    "Logist Regression": {
+      "accuracy": 0.9879676826519643,
+      "precision_fraud": 0.0,
+      "recall_fraud": 0.0,
+      "f1_fraud": 0.0,
+      "roc_auc": 0.8387539574060444,
+      "confusion_matrix": [
+        [
+          28492,
+          41
+        ],
+        [
+          306,
+          0
+        ]
+      ]
+    },
+    "Random Forest": {
+      "accuracy": 0.996671174451264,
+      "precision_fraud": 0.9772727272727273,
+      "recall_fraud": 0.7026143790849673,
+      "f1_fraud": 0.8174904942965779,
+      "roc_auc": 0.9915208259029964,
+      "confusion_matrix": [
+        [
+          28528,
+          5
+        ],
+        [
+          91,
+          215
+        ]
+      ]
+    }
+  },
+  "tuned_random_forest": {
+    "accuracy": 0.9963937723222026,
+    "precision_fraud": 0.9719626168224299,
+    "recall_fraud": 0.6797385620915033,
+    "f1_fraud": 0.8,
+    "roc_auc": 0.9973982653728086,
+    "confusion_matrix": [
+      [
+        28527,
+        6
+      ],
+      [
+        98,
+        208
+      ]
+    ],
+    "best_params": {
+      "n_estimators": "510",
+      "min_samples_split": "14",
+      "min_samples_leaf": "1",
+      "max_depth": null
+    }
+  }
+}

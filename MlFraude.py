@@ -1,15 +1,23 @@
 # imports
+import json
+import os
+
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from sklearn import neighbors
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    confusion_matrix,
+)
 
 TEST_SIZE = 0.2
 RANDOM_SEED = 42
@@ -86,7 +94,7 @@ for column in categorical_data:
 from sklearn.model_selection import train_test_split
 y = df['is_fraud']
 
-X_train, X_test, y_train, y_test = train_test_split(df_train, y, test_size=TEST_SIZE, random_state=RANDOM_SEED)
+X_train, X_test, y_train, y_test = train_test_split(df_train, y, test_size=TEST_SIZE, random_state=RANDOM_SEED, stratify=y)
 
 # cleaning null values
 from sklearn.impute import SimpleImputer
@@ -113,19 +121,31 @@ from sklearn.linear_model import LogisticRegression
 models = {
     "KNN": KNeighborsClassifier(),
     "Logist Regression": LogisticRegression(),
-    "Random Forest": RandomForestClassifier()
+    "Random Forest": RandomForestClassifier(random_state=RANDOM_SEED)
 }
+
+def evaluate_model(y_test, y_pred, y_proba):
+    return {
+        "accuracy": float(accuracy_score(y_test, y_pred)),
+        "precision_fraud": float(precision_score(y_test, y_pred, pos_label=1, zero_division=0)),
+        "recall_fraud": float(recall_score(y_test, y_pred, pos_label=1, zero_division=0)),
+        "f1_fraud": float(f1_score(y_test, y_pred, pos_label=1, zero_division=0)),
+        "roc_auc": float(roc_auc_score(y_test, y_proba)),
+        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
+    }
 
 def fit_and_score(models, X_train, X_test, y_train, y_test):
     models_scores = {}
     for name, model in models.items():
         model.fit(X_train, y_train)
-        models_scores[name] = model.score(X_test, y_test)
+        y_pred = model.predict(X_test)
+        y_proba = model.predict_proba(X_test)[:, 1]
+        models_scores[name] = evaluate_model(y_test, y_pred, y_proba)
     return models_scores
 
 
 score = fit_and_score(models=models, X_train=X_train_transform, X_test=X_test_transform, y_train=y_train_transformed, y_test=y_test_transform)
-print(score)
+print(json.dumps(score, indent=2))
 
 # hyperparameters adjustements and cross validation
 from sklearn.model_selection import RandomizedSearchCV
@@ -139,21 +159,30 @@ rf_grid = {
     "min_samples_split": np.arange(2,20,2),
     "min_samples_leaf": np.arange(1, 20, 2)
 }
-rscv_rf = RandomizedSearchCV(RandomForestClassifier(),
+rscv_rf = RandomizedSearchCV(RandomForestClassifier(random_state=RANDOM_SEED),
                              param_distributions=rf_grid,
                              cv=5,
                              n_iter=20,
-                             verbose=True)
+                             verbose=True,
+                             random_state=RANDOM_SEED,
+                             n_jobs=-1)
 
 rscv_rf.fit(X_train_transform, y_train_transformed)
 
-print(rscv_rf.best_params_)
-print(rscv_rf.score(X_test_transform, y_test_transform))
+y_pred_tuned = rscv_rf.predict(X_test_transform)
+y_proba_tuned = rscv_rf.predict_proba(X_test_transform)[:, 1]
+tuned_metrics = evaluate_model(y_test_transform, y_pred_tuned, y_proba_tuned)
+tuned_metrics["best_params"] = rscv_rf.best_params_
+print(json.dumps(tuned_metrics, indent=2, default=str))
+
+os.makedirs("reports", exist_ok=True)
+all_metrics = {"baseline": score, "tuned_random_forest": tuned_metrics}
+with open("reports/metrics.json", "w") as f:
+    json.dump(all_metrics, f, indent=2, default=str)
 
 # response
 url_test = "https://raw.githubusercontent.com/Fefevs09/Transaction-Fraud-ML/main/data/teste.csv"
 df = pd.read_csv(url_test, sep='|', encoding="utf-8")
-df
 
 df_test = df.drop(['ssn', 'cc_num', 'first', 'last', 'street', 'zip', 'unix_time', 'lat', 'long', 'acct_num', 'trans_num', 'merchant', 'merch_lat', 'merch_long'], axis=1)
 df_test.info()
