@@ -70,7 +70,13 @@ Esse desbalanceamento é o motivo pelo qual acurácia sozinha é uma métrica en
 
 ```
 Transaction-Fraud-ML/
-├── MlFraude.py                  # script principal com todo o pipeline
+├── MlFraude.py                  # ponto de entrada fino (orquestra o pipeline)
+├── fraud_ml/                    # pacote com a lógica do pipeline
+│   ├── config.py                 # constantes, URLs, caminhos, seeds
+│   ├── data.py                   # carregamento dos datasets
+│   ├── features.py               # engenharia de features e encoding categórico
+│   ├── modeling.py                # construção e tuning dos modelos
+│   └── evaluation.py              # métricas e persistência de resultados
 ├── requirements.txt
 ├── LICENSE
 ├── data/
@@ -80,7 +86,7 @@ Transaction-Fraud-ML/
 ├── reports/
 │   └── metrics.json              # métricas reais geradas pela última execução
 └── notebooks/
-    └── Sistema_de_Fraude.ipynb   # versão em notebook do mesmo pipeline
+    └── Sistema_de_Fraude.ipynb   # notebook que importa fraud_ml, mesma lógica do script
 ```
 
 ### Tecnologias
@@ -140,12 +146,11 @@ Como o dataset é ≈99% legítimo / ≈1% fraude, **accuracy não é uma métri
 
 ### Limitações e próximos passos
 
-- O pipeline original avaliava os modelos apenas por `.score()` (acurácia), o que é enganoso neste dataset desbalanceado — corrigido nesta atualização com precision/recall/F1/ROC-AUC focados na classe fraude.
+- O pipeline original avaliava os modelos apenas por `.score()` (acurácia), o que é enganoso neste dataset desbalanceado — corrigido com precision/recall/F1/ROC-AUC focados na classe fraude.
 - O desbalanceamento de classes não é tratado ativamente (sem SMOTE, undersampling ou `class_weight='balanced'`) — candidato natural para trabalho futuro.
-- Há uma inconsistência conhecida no bloco final de inferência: o `LabelEncoder` das colunas categóricas é reajustado (`fit_transform`) em `teste.csv` em vez de reutilizar o encoder ajustado em `treino.csv`. Isso afeta apenas as previsões finais em `data/submissao.csv`, não as métricas de avaliação reportadas acima (que vêm do split interno de `treino.csv`). Documentado aqui, não corrigido nesta passada.
-- Código morto residual no script (import não usado de `sklearn.neighbors`, `StandardScaler`/bloco `OneHotEncoder` comentado, função `set_street_num` não utilizada).
+- **Corrigido nesta atualização**: o `LabelEncoder` das colunas categóricas era reajustado (`fit_transform`) em `teste.csv` em vez de reutilizar o encoder ajustado em `treino.csv`, e o holdout nunca passava pelo `imputer.transform()` antes da predição final, mesmo o modelo tendo sido treinado com dados imputados. Ambos os problemas afetavam apenas as previsões finais em `data/submissao.csv`, não as métricas de avaliação reportadas acima. Agora `fraud_ml/features.py` reaplica (nunca reajusta) os encoders e o imputer do treino sobre o holdout.
 - Sem testes automatizados ou CI configurados.
-- `notebooks/Sistema_de_Fraude.ipynb` espelha o script, mas pode ficar levemente fora de sincronia após mudanças futuras em `MlFraude.py`.
+- `notebooks/Sistema_de_Fraude.ipynb` agora importa `fraud_ml` diretamente (mesma lógica do script), o que reduz — mas não elimina — o risco de as células ficarem fora de sincronia com `MlFraude.py::main()`.
 
 ### Licença
 
@@ -214,7 +219,13 @@ This imbalance is exactly why plain accuracy is misleading here: a trivial "alwa
 
 ```
 Transaction-Fraud-ML/
-├── MlFraude.py                  # main script with the full pipeline
+├── MlFraude.py                  # thin entry point (orchestrates the pipeline)
+├── fraud_ml/                    # package holding the pipeline logic
+│   ├── config.py                 # constants, URLs, paths, seeds
+│   ├── data.py                   # dataset loading
+│   ├── features.py               # feature engineering and categorical encoding
+│   ├── modeling.py                # model construction and tuning
+│   └── evaluation.py              # metrics and results persistence
 ├── requirements.txt
 ├── LICENSE
 ├── data/
@@ -224,7 +235,7 @@ Transaction-Fraud-ML/
 ├── reports/
 │   └── metrics.json              # real metrics from the latest run
 └── notebooks/
-    └── Sistema_de_Fraude.ipynb   # notebook version of the same pipeline
+    └── Sistema_de_Fraude.ipynb   # notebook that imports fraud_ml, same logic as the script
 ```
 
 ### Tech stack
@@ -284,12 +295,11 @@ Since the dataset is ≈99% legitimate / ≈1% fraud, **accuracy is not a trustw
 
 ### Limitations & future work
 
-- The original pipeline only evaluated models with `.score()` (accuracy), which is misleading on this imbalanced dataset — fixed in this update with precision/recall/F1/ROC-AUC focused on the fraud class.
+- The original pipeline only evaluated models with `.score()` (accuracy), which is misleading on this imbalanced dataset — fixed with precision/recall/F1/ROC-AUC focused on the fraud class.
 - Class imbalance is not actively addressed (no SMOTE, undersampling, or `class_weight='balanced'`) — a natural candidate for future work.
-- There's a known inconsistency in the final inference block: the categorical `LabelEncoder` is refit (`fit_transform`) on `teste.csv` instead of reusing the encoder fit on `treino.csv`. This only affects the final predictions in `data/submissao.csv`, not the evaluation metrics reported above (which come from the internal `treino.csv` split). Documented here, not fixed in this pass.
-- Some residual dead code in the script (unused `sklearn.neighbors` import, commented-out `StandardScaler`/`OneHotEncoder` block, unused `set_street_num` function).
+- **Fixed in this update**: the categorical `LabelEncoder` used to be refit (`fit_transform`) on `teste.csv` instead of reusing the encoder fit on `treino.csv`, and the holdout never went through `imputer.transform()` before the final prediction, even though the model was trained on imputed data. Both issues only affected the final predictions in `data/submissao.csv`, not the evaluation metrics reported above. `fraud_ml/features.py` now reapplies (never refits) the train-fitted encoders and imputer on the holdout.
 - No automated tests or CI configured.
-- `notebooks/Sistema_de_Fraude.ipynb` mirrors the script but may drift slightly out of sync after future changes to `MlFraude.py`.
+- `notebooks/Sistema_de_Fraude.ipynb` now imports `fraud_ml` directly (same logic as the script), which reduces — but doesn't eliminate — the risk of cells drifting out of sync with `MlFraude.py::main()`.
 
 ### License
 

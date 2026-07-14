@@ -1,205 +1,75 @@
-# imports
+"""Credit card fraud detection pipeline.
+
+Trains and evaluates baseline classifiers, tunes a Random Forest via
+RandomizedSearchCV, and writes predictions for the holdout test set.
+Pipeline logic lives in the `fraud_ml` package; this script only orchestrates it.
+"""
+
 import json
-import os
 
-import numpy as np
-import pandas as pd
-
-from sklearn import neighbors
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score,
-    confusion_matrix,
-)
-
-TEST_SIZE = 0.2
-RANDOM_SEED = 42
-# read csv
-url = "https://raw.githubusercontent.com/Fefevs09/Transaction-Fraud-ML/main/data/treino.csv"
-df = pd.read_csv(url,sep='|', encoding="utf-8" )
-print(df.info())
-
-# information about data
-df.select_dtypes(include="object").describe()
-
-# drop collums don't usefull
-df = df.dropna(subset="is_fraud")
-df_train = df.drop(['ssn', 'cc_num', 'first', 'last', 'street', 'zip', 'unix_time', 'lat', 'long', 'acct_num', 'trans_num', 'merchant', 'merch_lat', 'merch_long', 'is_fraud'], axis=1)
-df_train.info()
-
-# function to separate data datetime
-def cleaning_data_datetime(data):
-    # transform to datetime
-    time_transaction = pd.to_datetime(data['trans_time'],format='%H:%M:%S')
-    date_transaction = pd.to_datetime(data['trans_date'], format='%Y-%m-%d')
-
-    # apply collumns
-    data['hour'] = time_transaction.dt.hour
-    data['minute'] = time_transaction.dt.minute
-    data['seconds'] = time_transaction.dt.second
-    data['year'] = date_transaction.dt.year
-    data['month'] = date_transaction.dt.month
-    data['day'] = date_transaction.dt.day
-    data.drop(['trans_time', 'trans_date'], axis=1, inplace=True)
-
-cleaning_data_datetime(df_train)
-# function to get age of user
-def get_user_age(data):
-    year_user = pd.to_datetime(data['dob'], format="%Y-%m-%d")
-    data['age'] = (data['year'] - year_user.dt.year)
-    data.drop(['dob'], axis=1, inplace=True)
-get_user_age(df_train)
-# df_train.info()
-
-# set street names to num
-def set_street_num(data):
-    data['street'] = data['street'].str.split().str[0]
-    data['street'] = data['street'].astype(int)
-
-# set_street_num(df_train)
-
-# transform category columns
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
-
-# Supondo que 'df_train' seja o seu DataFrame original
-
-# Extrair colunas categóricas
-categorical_data = ['gender', 'job', 'profile', 'category', 'city', 'state']
-
-# Inicializar LabelEncoder e OneHotEncoder
-label_encoder = LabelEncoder()
-onehot_encoder = OneHotEncoder()
-
-# Aplicar LabelEncoder para cada coluna categórica
-for column in categorical_data:
-    df_train[column] = label_encoder.fit_transform(df_train[column])
-
-# # Aplicar OneHotEncoder para todas as colunas categóricas
-# encoded_features = onehot_encoder.fit_transform(df_train[categorical_data])
-
-# # Converter as features one-hot em DataFrame pandas
-# encoded_df = pd.DataFrame(encoded_features.toarray(), columns=onehot_encoder.get_feature_names_out(categorical_data))
-
-# # Concatenar o DataFrame one-hot com o DataFrame original
-# df_encoded = pd.concat([df_train.drop(columns=categorical_data), encoded_df], axis=1)
-
-# # Separar os dados em conjuntos de treino e teste
-from sklearn.model_selection import train_test_split
-y = df['is_fraud']
-
-X_train, X_test, y_train, y_test = train_test_split(df_train, y, test_size=TEST_SIZE, random_state=RANDOM_SEED, stratify=y)
-
-# cleaning null values
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import LabelEncoder
 
-imputer = SimpleImputer()
-X_train_transform = imputer.fit_transform(X_train)
-
-lab = LabelEncoder()
-y_train_transformed = lab.fit_transform(y_train)
-
-X_test_transform = imputer.transform(X_test)
-y_test_transform = lab.transform(y_test)
-
-# training models
-# algorithms machine learning
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LogisticRegression
-
-# model = RandomForestClassifier()
-# model.fit(X_train, y_train_transformed)
-
-models = {
-    "KNN": KNeighborsClassifier(),
-    "Logist Regression": LogisticRegression(),
-    "Random Forest": RandomForestClassifier(random_state=RANDOM_SEED)
-}
-
-def evaluate_model(y_test, y_pred, y_proba):
-    return {
-        "accuracy": float(accuracy_score(y_test, y_pred)),
-        "precision_fraud": float(precision_score(y_test, y_pred, pos_label=1, zero_division=0)),
-        "recall_fraud": float(recall_score(y_test, y_pred, pos_label=1, zero_division=0)),
-        "f1_fraud": float(f1_score(y_test, y_pred, pos_label=1, zero_division=0)),
-        "roc_auc": float(roc_auc_score(y_test, y_proba)),
-        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
-    }
-
-def fit_and_score(models, X_train, X_test, y_train, y_test):
-    models_scores = {}
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        y_proba = model.predict_proba(X_test)[:, 1]
-        models_scores[name] = evaluate_model(y_test, y_pred, y_proba)
-    return models_scores
+from fraud_ml import config, data, evaluation, features, modeling
 
 
-score = fit_and_score(models=models, X_train=X_train_transform, X_test=X_test_transform, y_train=y_train_transformed, y_test=y_test_transform)
-print(json.dumps(score, indent=2))
+def build_features(df):
+    """Apply datetime and age feature engineering to a dataframe already stripped of PII columns."""
+    features.add_datetime_features(df)
+    features.add_age_feature(df)
+    return df
 
-# hyperparameters adjustements and cross validation
-from sklearn.model_selection import RandomizedSearchCV
 
-train_score = []
-test_score = []
+def main() -> None:
+    df = data.load_training_data()
+    df = df.dropna(subset=config.TARGET_COLUMN)
+    y = df[config.TARGET_COLUMN]
 
-rf_grid = {
-    "n_estimators": np.arange(10, 1000, 50),
-    "max_depth": [None, 3,5,10],
-    "min_samples_split": np.arange(2,20,2),
-    "min_samples_leaf": np.arange(1, 20, 2)
-}
-rscv_rf = RandomizedSearchCV(RandomForestClassifier(random_state=RANDOM_SEED),
-                             param_distributions=rf_grid,
-                             cv=5,
-                             n_iter=20,
-                             verbose=True,
-                             random_state=RANDOM_SEED,
-                             n_jobs=-1)
+    df_train = df.drop(columns=[*config.PII_AND_HIGH_CARDINALITY_COLUMNS, config.TARGET_COLUMN])
+    build_features(df_train)
+    encoders = features.fit_label_encoders(df_train, config.CATEGORICAL_COLUMNS)
 
-rscv_rf.fit(X_train_transform, y_train_transformed)
+    X_train, X_test, y_train, y_test = train_test_split(
+        df_train, y, test_size=config.TEST_SIZE, random_state=config.RANDOM_SEED, stratify=y
+    )
 
-y_pred_tuned = rscv_rf.predict(X_test_transform)
-y_proba_tuned = rscv_rf.predict_proba(X_test_transform)[:, 1]
-tuned_metrics = evaluate_model(y_test_transform, y_pred_tuned, y_proba_tuned)
-tuned_metrics["best_params"] = rscv_rf.best_params_
-print(json.dumps(tuned_metrics, indent=2, default=str))
+    imputer = SimpleImputer()
+    X_train_transform = imputer.fit_transform(X_train)
+    X_test_transform = imputer.transform(X_test)
 
-os.makedirs("reports", exist_ok=True)
-all_metrics = {"baseline": score, "tuned_random_forest": tuned_metrics}
-with open("reports/metrics.json", "w") as f:
-    json.dump(all_metrics, f, indent=2, default=str)
+    target_encoder = LabelEncoder()
+    y_train_transformed = target_encoder.fit_transform(y_train)
+    y_test_transform = target_encoder.transform(y_test)
 
-# response
-url_test = "https://raw.githubusercontent.com/Fefevs09/Transaction-Fraud-ML/main/data/teste.csv"
-df = pd.read_csv(url_test, sep='|', encoding="utf-8")
+    models = modeling.build_models(config.RANDOM_SEED)
+    baseline_scores = evaluation.fit_and_score(
+        models, X_train_transform, X_test_transform, y_train_transformed, y_test_transform
+    )
+    print(json.dumps(baseline_scores, indent=2))
 
-df_test = df.drop(['ssn', 'cc_num', 'first', 'last', 'street', 'zip', 'unix_time', 'lat', 'long', 'acct_num', 'trans_num', 'merchant', 'merch_lat', 'merch_long'], axis=1)
-df_test.info()
-cleaning_data_datetime(df_test)
-get_user_age(df_test)
+    search = modeling.tune_random_forest(X_train_transform, y_train_transformed, config.RANDOM_SEED)
+    y_pred_tuned = search.predict(X_test_transform)
+    y_proba_tuned = search.predict_proba(X_test_transform)[:, 1]
+    tuned_metrics = evaluation.evaluate_model(y_test_transform, y_pred_tuned, y_proba_tuned)
+    tuned_metrics["best_params"] = search.best_params_
+    print(json.dumps(tuned_metrics, indent=2, default=str))
 
-# set_street_num(df_test)
-for column in categorical_data:
-    df_test[column] = label_encoder.fit_transform(df_test[column])
+    evaluation.save_metrics(
+        {"baseline": baseline_scores, "tuned_random_forest": tuned_metrics}, config.METRICS_OUTPUT_PATH
+    )
 
-#
-# y_sub = knn.predict(X_train)
-y_sub = rscv_rf.predict(df_test)
+    # Holdout inference: reuse the encoders and imputer fitted on training data
+    # (not refit on the holdout) so train/test preprocessing stay consistent.
+    df_holdout_raw = data.load_holdout_data()
+    df_holdout = df_holdout_raw.drop(columns=config.PII_AND_HIGH_CARDINALITY_COLUMNS)
+    build_features(df_holdout)
+    features.apply_label_encoders(df_holdout, encoders, config.CATEGORICAL_COLUMNS)
+    df_holdout_transform = imputer.transform(df_holdout)
 
-# generate response dataframe
-response = pd.DataFrame()
-response['trans_num'] =  df['trans_num']
-response['is_fraud'] = y_sub
-# response['is_fraud'].value_counts()
-response.to_csv('data/submissao.csv', index=False)
+    predictions = search.predict(df_holdout_transform)
+    evaluation.save_submission(df_holdout_raw["trans_num"], predictions, config.SUBMISSION_OUTPUT_PATH)
+
+
+if __name__ == "__main__":
+    main()

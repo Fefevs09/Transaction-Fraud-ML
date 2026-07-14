@@ -17,7 +17,7 @@
         ]
       ]
     },
-    "Logist Regression": {
+    "Logistic Regression": {
       "accuracy": 0.9879676826519643,
       "precision_fraud": 0.0,
       "recall_fraud": 0.0,
